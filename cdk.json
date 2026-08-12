@@ -1,0 +1,7 @@
+{
+  "app": "npx tsx infra/bin/app.ts",
+  "context": {
+    "dashboardEnabled": false,
+    "alertEmail": ""
+  }
+}
