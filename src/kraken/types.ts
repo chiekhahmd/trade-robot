@@ -12,10 +12,7 @@ export type KrakenOHLCEntry = [number, string, string, string, string, string, s
 
 export interface KrakenOHLCResponse {
   error: string[];
-  result: {
-    [pair: string]: KrakenOHLCEntry[];
-    last: number;
-  };
+  result: Record<string, KrakenOHLCEntry[] | number>;
 }
 
 export interface KrakenBalanceResponse {

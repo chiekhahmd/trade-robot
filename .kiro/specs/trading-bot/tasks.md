@@ -69,8 +69,8 @@ An automated EMA crossover trading bot for BTC/EUR and ETH/EUR on Kraken, deploy
 - [ ] 4. Checkpoint — Core strategy tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Kraken API client
-  - [ ] 5.1 Implement Kraken authentication and request signing
+- [-] 5. Kraken API client
+  - [-] 5.1 Implement Kraken authentication and request signing
     - Create `src/kraken/endpoints.ts` with base URL and endpoint path constants
     - Create `src/kraken/client.ts` with `KrakenClient` class
     - Implement HMAC-SHA512 signature: `sign(path, nonce, postData, privateKey)`
