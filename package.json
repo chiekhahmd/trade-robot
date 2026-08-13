@@ -10,7 +10,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "synth": "cd infra && npx cdk synth",
-    "deploy": "npm run build && cd infra && npx cdk deploy --require-approval never",
+    "deploy": "npm run build && npx cdk deploy --require-approval never",
     "backtest": "npx tsx backtester/index.ts"
   },
   "engines": {
