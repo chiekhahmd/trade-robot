@@ -6,25 +6,49 @@ import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
 export interface BotConfig {
   enabled: boolean;
   mode: 'PAPER' | 'LIVE';
-  pairs: string[];
-  emaFastPeriod: number;
-  emaSlowPeriod: number;
-  stopLossPct: number;
-  takeProfitPct: number;
-  maxRiskPerTradePct: number;
+  pairs: PairConfig[];
   maxDrawdownPct: number;
   minBalanceEUR: number;
 }
 
+export interface PairConfig {
+  pair: string;           // Kraken pair name (e.g., 'SOLEUR', 'XXBTZEUR')
+  strategy: 'EMA_CROSSOVER' | 'RSI_MEAN_REVERSION';
+  // EMA params (used when strategy = EMA_CROSSOVER)
+  emaFastPeriod: number;
+  emaSlowPeriod: number;
+  // RSI params (used when strategy = RSI_MEAN_REVERSION)
+  rsiPeriod: number;
+  rsiOversold: number;
+  rsiOverbought: number;
+  // Risk params (per pair)
+  stopLossPct: number;
+  takeProfitPct: number;
+  maxRiskPerTradePct: number;
+  leverage: number;
+}
+
+const DEFAULT_PAIR_CONFIG: PairConfig = {
+  pair: 'SOLEUR',
+  strategy: 'RSI_MEAN_REVERSION',
+  emaFastPeriod: 9,
+  emaSlowPeriod: 21,
+  rsiPeriod: 7,
+  rsiOversold: 20,
+  rsiOverbought: 80,
+  stopLossPct: 2.0,
+  takeProfitPct: 5.0,
+  maxRiskPerTradePct: 10.0,
+  leverage: 4,
+};
+
 const DEFAULTS: BotConfig = {
   enabled: true,
   mode: 'PAPER',
-  pairs: ['XXBTZEUR', 'XETHZEUR'],
-  emaFastPeriod: 9,
-  emaSlowPeriod: 21,
-  stopLossPct: 1.5,
-  takeProfitPct: 3.0,
-  maxRiskPerTradePct: 2.0,
+  pairs: [
+    { ...DEFAULT_PAIR_CONFIG, pair: 'SOLEUR', strategy: 'RSI_MEAN_REVERSION', rsiPeriod: 7, rsiOversold: 20, rsiOverbought: 80 },
+    { ...DEFAULT_PAIR_CONFIG, pair: 'XXBTZEUR', strategy: 'RSI_MEAN_REVERSION', rsiPeriod: 14, rsiOversold: 30, rsiOverbought: 70 },
+  ],
   maxDrawdownPct: 10.0,
   minBalanceEUR: 10,
 };
@@ -42,18 +66,17 @@ export async function loadConfig(
 
   const item = result.Item || {};
 
-  return {
+  const config: BotConfig = {
     enabled: typeof item.enabled === 'boolean' ? item.enabled : DEFAULTS.enabled,
     mode: item.mode === 'LIVE' ? 'LIVE' : DEFAULTS.mode,
-    pairs: Array.isArray(item.pairs) && item.pairs.length > 0 ? item.pairs : DEFAULTS.pairs,
-    emaFastPeriod: validatePeriod(item.emaFastPeriod, item.emaSlowPeriod, DEFAULTS.emaFastPeriod, 'fast'),
-    emaSlowPeriod: validatePeriod(item.emaSlowPeriod, item.emaFastPeriod, DEFAULTS.emaSlowPeriod, 'slow'),
-    stopLossPct: validateRange(item.stopLossPct, 0.1, 10, DEFAULTS.stopLossPct),
-    takeProfitPct: validateRange(item.takeProfitPct, 0.1, 20, DEFAULTS.takeProfitPct),
-    maxRiskPerTradePct: validateRange(item.maxRiskPerTradePct, 0.1, 10, DEFAULTS.maxRiskPerTradePct),
+    pairs: Array.isArray(item.pairs) && item.pairs.length > 0
+      ? item.pairs.map((p: Partial<PairConfig>) => ({ ...DEFAULT_PAIR_CONFIG, ...p }))
+      : DEFAULTS.pairs,
     maxDrawdownPct: validateRange(item.maxDrawdownPct, 1, 50, DEFAULTS.maxDrawdownPct),
     minBalanceEUR: typeof item.minBalanceEUR === 'number' && item.minBalanceEUR > 0 ? item.minBalanceEUR : DEFAULTS.minBalanceEUR,
   };
+
+  return config;
 }
 
 function validateRange(value: unknown, min: number, max: number, defaultValue: number): number {
@@ -61,13 +84,4 @@ function validateRange(value: unknown, min: number, max: number, defaultValue: n
   return value;
 }
 
-function validatePeriod(value: unknown, otherPeriod: unknown, defaultValue: number, type: 'fast' | 'slow'): number {
-  if (typeof value !== 'number' || value < 1) return defaultValue;
-  if (typeof otherPeriod === 'number') {
-    if (type === 'fast' && value >= otherPeriod) return defaultValue;
-    if (type === 'slow' && value <= (otherPeriod as number)) return defaultValue;
-  }
-  return value;
-}
-
-export { DEFAULTS as CONFIG_DEFAULTS };
+export { DEFAULTS as CONFIG_DEFAULTS, DEFAULT_PAIR_CONFIG };

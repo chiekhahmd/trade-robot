@@ -17,11 +17,27 @@ interface OpenPosition {
   feePaid: number;
 }
 
+export interface SimConfig {
+  stopLossPct: number;
+  takeProfitPct: number;
+  maxRiskPerTradePct: number;
+  emaFast: number;
+  emaSlow: number;
+}
+
 export interface SimulationResult {
   trades: TradeRecord[];
   portfolioValues: number[];
   endingBalance: number;
 }
+
+const DEFAULT_CONFIG: SimConfig = {
+  stopLossPct: 1.5,
+  takeProfitPct: 3.0,
+  maxRiskPerTradePct: 2.0,
+  emaFast: 9,
+  emaSlow: 21,
+};
 
 const FEE_PCT = 0.26; // Kraken taker fee
 
@@ -32,17 +48,19 @@ export function simulate(
   candles: Candle[],
   startingBalance: number,
   pair: string,
+  config?: Partial<SimConfig>,
 ): SimulationResult {
+  const cfg = { ...DEFAULT_CONFIG, ...config };
   const riskConfig: RiskConfig = {
-    stopLossPct: 1.5,
-    takeProfitPct: 3.0,
-    maxRiskPerTradePct: 2.0,
+    stopLossPct: cfg.stopLossPct,
+    takeProfitPct: cfg.takeProfitPct,
+    maxRiskPerTradePct: cfg.maxRiskPerTradePct,
     maxDrawdownPct: 25,
     minBalanceEUR: 5,
   };
 
-  const EMA_FAST = 9;
-  const EMA_SLOW = 21;
+  const EMA_FAST = cfg.emaFast;
+  const EMA_SLOW = cfg.emaSlow;
 
   let balance = startingBalance;
   let position: OpenPosition | null = null;
