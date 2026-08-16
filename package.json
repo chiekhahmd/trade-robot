@@ -5,7 +5,9 @@
   "description": "Automated EMA crossover trading bot for Kraken (BTC/EUR, ETH/EUR)",
   "main": "dist/handler.js",
   "scripts": {
-    "build": "esbuild src/handler.ts --bundle --platform=node --target=node20 --outfile=dist/handler.js --external:@aws-sdk/*",
+    "build": "npm run build:bot && npm run build:dashboard",
+    "build:bot": "esbuild src/handler.ts --bundle --platform=node --target=node20 --outfile=dist/handler.js --external:@aws-sdk/*",
+    "build:dashboard": "esbuild src/dashboard.ts --bundle --platform=node --target=node20 --outfile=dist/dashboard.js --external:@aws-sdk/*",
     "test": "vitest --run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -18,14 +20,15 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.600.0",
-    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
     "@aws-sdk/client-sns": "^3.600.0",
-    "@aws-sdk/client-secrets-manager": "^3.600.0"
+    "@aws-sdk/lib-dynamodb": "^3.600.0"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.162",
     "@types/node": "^20.14.0",
-    "aws-cdk-lib": "^2.150.0",
     "aws-cdk": "^2.150.0",
+    "aws-cdk-lib": "^2.150.0",
     "constructs": "^10.3.0",
     "esbuild": "^0.23.0",
     "fast-check": "^3.19.0",

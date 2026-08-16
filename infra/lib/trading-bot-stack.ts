@@ -66,9 +66,30 @@ export class TradingBotStack extends cdk.Stack {
     });
     rule.addTarget(new targets.LambdaFunction(fn));
 
+    // ─── Dashboard Lambda ──────────────────────────────────────────────────────
+
+    const dashboardFn = new lambda.Function(this, 'DashboardFunction', {
+      functionName: 'trading-bot-dashboard',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'dashboard.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../dist')),
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(10),
+      environment: {
+        TABLE_NAME: table.tableName,
+      },
+    });
+
+    table.grantReadData(dashboardFn);
+
+    const dashboardUrl = dashboardFn.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+    });
+
     // Outputs
     new cdk.CfnOutput(this, 'FunctionArn', { value: fn.functionArn });
     new cdk.CfnOutput(this, 'TableName', { value: table.tableName });
     new cdk.CfnOutput(this, 'AlertTopicArn', { value: alertTopic.topicArn });
+    new cdk.CfnOutput(this, 'DashboardUrl', { value: dashboardUrl.url });
   }
 }
