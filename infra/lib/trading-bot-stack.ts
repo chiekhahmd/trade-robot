@@ -42,7 +42,7 @@ export class TradingBotStack extends cdk.Stack {
     // Lambda function
     const fn = new lambda.Function(this, 'TradingBotFunction', {
       functionName: 'trading-bot',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'handler.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../dist')),
       memorySize: 256,
@@ -70,7 +70,7 @@ export class TradingBotStack extends cdk.Stack {
 
     const dashboardFn = new lambda.Function(this, 'DashboardFunction', {
       functionName: 'trading-bot-dashboard',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'dashboard.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../dist')),
       memorySize: 256,
