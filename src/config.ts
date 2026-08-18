@@ -33,11 +33,11 @@ const DEFAULT_PAIR_CONFIG: PairConfig = {
   strategy: 'RSI_MEAN_REVERSION',
   emaFastPeriod: 9,
   emaSlowPeriod: 21,
-  rsiPeriod: 7,
-  rsiOversold: 20,
-  rsiOverbought: 80,
+  rsiPeriod: 14,
+  rsiOversold: 30,
+  rsiOverbought: 70,
   stopLossPct: 2.0,
-  takeProfitPct: 5.0,
+  takeProfitPct: 4.0,
   maxRiskPerTradePct: 10.0,
   leverage: 4,
 };
@@ -46,10 +46,11 @@ const DEFAULTS: BotConfig = {
   enabled: true,
   mode: 'PAPER',
   pairs: [
-    { ...DEFAULT_PAIR_CONFIG, pair: 'SOLEUR', strategy: 'RSI_MEAN_REVERSION', rsiPeriod: 7, rsiOversold: 20, rsiOverbought: 80 },
-    { ...DEFAULT_PAIR_CONFIG, pair: 'XXBTZEUR', strategy: 'RSI_MEAN_REVERSION', rsiPeriod: 14, rsiOversold: 30, rsiOverbought: 70 },
+    { ...DEFAULT_PAIR_CONFIG, pair: 'SOLEUR' },
+    { ...DEFAULT_PAIR_CONFIG, pair: 'XXBTZEUR' },
+    { ...DEFAULT_PAIR_CONFIG, pair: 'XETHZEUR' },
   ],
-  maxDrawdownPct: 10.0,
+  maxDrawdownPct: 15.0,
   minBalanceEUR: 10,
 };
 

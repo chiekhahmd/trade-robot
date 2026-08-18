@@ -75,7 +75,7 @@ async function processPair(
   const { pair, strategy } = pairConfig;
 
   // Fetch candles
-  const candles = await withRetry(() => kraken.getOHLC(pair, 30), { maxRetries: 3, baseDelay: 1000, multiplier: 2 });
+  const candles = await withRetry(() => kraken.getOHLC(pair, 15), { maxRetries: 3, baseDelay: 1000, multiplier: 2 });
 
   const minCandles = strategy === 'EMA_CROSSOVER'
     ? pairConfig.emaSlowPeriod + 2
