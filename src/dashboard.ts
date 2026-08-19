@@ -18,6 +18,9 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
     if (path === '/api/trades') {
       return jsonResponse(await getTrades());
     }
+    if (path === '/api/roundtrips') {
+      return jsonResponse(await getRoundTrips());
+    }
     if (path === '/api/config') {
       return jsonResponse(await getConfig());
     }
@@ -56,6 +59,87 @@ async function getTrades(): Promise<unknown[]> {
   const items = result.Items || [];
   items.sort((a, b) => Number(b.SK) - Number(a.SK));
   return items.slice(0, 50);
+}
+
+interface RoundTrip {
+  pair: string;
+  entryPrice: number;
+  exitPrice: number | null;
+  size: number;
+  pnl: number | null;
+  openedAt: number | null;
+  closedAt: number | null;
+  reason: string;
+  mode: string;
+  status: 'OPEN' | 'CLOSED';
+}
+
+/**
+ * Pair each buy (open) with its subsequent sell (close) per pair, oldest→newest,
+ * collapsing the two log legs into a single long round-trip row.
+ */
+async function getRoundTrips(): Promise<RoundTrip[]> {
+  const result = await ddbClient.send(new ScanCommand({
+    TableName: TABLE_NAME,
+    FilterExpression: 'begins_with(PK, :prefix)',
+    ExpressionAttributeValues: { ':prefix': 'TRADE#' },
+    Limit: 1000,
+  }));
+  const items = (result.Items || []) as Record<string, any>[];
+
+  // Group legs by pair, oldest first
+  const byPair: Record<string, Record<string, any>[]> = {};
+  for (const it of items) {
+    const pair = String(it.PK || '').replace('TRADE#', '');
+    (byPair[pair] ||= []).push(it);
+  }
+
+  const roundTrips: RoundTrip[] = [];
+  for (const [pair, legs] of Object.entries(byPair)) {
+    legs.sort((a, b) => Number(a.SK) - Number(b.SK));
+    let open: Record<string, any> | null = null;
+    for (const leg of legs) {
+      if (leg.side === 'buy') {
+        // If a previous open never closed, record it as still open before starting a new one
+        if (open) roundTrips.push(toOpenRoundTrip(pair, open));
+        open = leg;
+      } else if (leg.side === 'sell') {
+        roundTrips.push({
+          pair,
+          entryPrice: Number(open?.entryPrice ?? leg.entryPrice),
+          exitPrice: Number(leg.exitPrice),
+          size: Number(leg.size),
+          pnl: Number(leg.pnl),
+          openedAt: open ? Number(open.SK) : null,
+          closedAt: Number(leg.SK),
+          reason: String(leg.reason || '—'),
+          mode: String(leg.mode || '—'),
+          status: 'CLOSED',
+        });
+        open = null;
+      }
+    }
+    if (open) roundTrips.push(toOpenRoundTrip(pair, open));
+  }
+
+  // Newest first by close time (fall back to open time)
+  roundTrips.sort((a, b) => (b.closedAt ?? b.openedAt ?? 0) - (a.closedAt ?? a.openedAt ?? 0));
+  return roundTrips.slice(0, 50);
+}
+
+function toOpenRoundTrip(pair: string, open: Record<string, any>): RoundTrip {
+  return {
+    pair,
+    entryPrice: Number(open.entryPrice),
+    exitPrice: null,
+    size: Number(open.size),
+    pnl: null,
+    openedAt: Number(open.SK),
+    closedAt: null,
+    reason: 'OPEN',
+    mode: String(open.mode || '—'),
+    status: 'OPEN',
+  };
 }
 
 async function getConfig(): Promise<Record<string, unknown>> {
@@ -191,10 +275,10 @@ async function fetchJSON(url) {
 
 async function loadDashboard() {
   try {
-    const [config, signals, trades, positions] = await Promise.all([
+    const [config, signals, roundtrips, positions] = await Promise.all([
       fetchJSON('/api/config'),
       fetchJSON('/api/signals'),
-      fetchJSON('/api/trades'),
+      fetchJSON('/api/roundtrips'),
       fetchJSON('/api/positions'),
     ]);
 
@@ -203,15 +287,22 @@ async function loadDashboard() {
     const mode = config.mode || 'PAPER';
     const pairs = (config.pairs || []).map(p => p.pair).join(', ') || '—';
     const strategies = [...new Set((config.pairs || []).map(p => p.strategy))].join(', ') || '—';
-    const totalPnl = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+    const leverage = (config.pairs || []).map(p => p.leverage).filter(Boolean);
+    const leverageLabel = leverage.length ? Math.max(...leverage) + 'x' : '1x';
+    const closed = roundtrips.filter(t => t.status === 'CLOSED');
+    const totalPnl = closed.reduce((sum, t) => sum + (t.pnl || 0), 0);
+    const wins = closed.filter(t => (t.pnl || 0) > 0).length;
+    const winRate = closed.length ? (wins / closed.length * 100).toFixed(0) + '%' : '—';
 
     document.getElementById('cards').innerHTML = \`
       <div class="card"><div class="card-label">Status</div><div class="card-value \${enabled ? 'enabled' : 'disabled'}">\${enabled ? 'ENABLED' : 'DISABLED'}</div></div>
       <div class="card"><div class="card-label">Mode</div><div class="card-value \${mode === 'LIVE' ? 'live' : 'paper'}">\${mode}</div></div>
       <div class="card"><div class="card-label">Pairs</div><div class="card-value" style="font-size:1rem;">\${pairs}</div></div>
       <div class="card"><div class="card-label">Strategies</div><div class="card-value" style="font-size:1rem;">\${strategies}</div></div>
+      <div class="card"><div class="card-label">Leverage</div><div class="card-value">\${leverageLabel}</div></div>
       <div class="card"><div class="card-label">Total P&amp;L</div><div class="card-value \${pnlClass(totalPnl)}">\${totalPnl >= 0 ? '+' : ''}\${totalPnl.toFixed(4)} EUR</div></div>
-      <div class="card"><div class="card-label">Total Trades</div><div class="card-value">\${trades.length}</div></div>
+      <div class="card"><div class="card-label">Closed Trades</div><div class="card-value">\${closed.length}</div></div>
+      <div class="card"><div class="card-label">Win Rate</div><div class="card-value">\${winRate}</div></div>
     \`;
 
     // Positions
@@ -252,17 +343,18 @@ async function loadDashboard() {
         <td>\${s.closePrice ? Number(s.closePrice).toFixed(4) : '—'}</td>
       </tr>\`).join('') + '</tbody></table>';
 
-    // Trades — last 20
-    const displayTrades = trades.slice(0, 20);
-    document.getElementById('trades-container').innerHTML = '<table><thead><tr><th>Time</th><th>Pair</th><th>Side</th><th>Entry</th><th>Exit</th><th>Size</th><th>P&amp;L</th><th>Reason</th></tr></thead><tbody>' +
+    // Trades — round-trips (one row per open→close cycle)
+    const displayTrades = roundtrips.slice(0, 20);
+    document.getElementById('trades-container').innerHTML = '<table><thead><tr><th>Opened</th><th>Closed</th><th>Pair</th><th>Direction</th><th>Entry</th><th>Exit</th><th>Size</th><th>P&amp;L</th><th>Exit Reason</th></tr></thead><tbody>' +
       displayTrades.map(t => \`<tr>
-        <td>\${fmt(t.SK)}</td>
-        <td><span class="pair-tag">\${(t.PK || '').replace('TRADE#','')}</span></td>
-        <td class="\${t.side === 'buy' ? 'signal-buy' : 'signal-sell'}">\${t.side || '—'}</td>
+        <td>\${fmt(t.openedAt)}</td>
+        <td>\${t.status === 'OPEN' ? '<span class="signal-hold">— open —</span>' : fmt(t.closedAt)}</td>
+        <td><span class="pair-tag">\${t.pair}</span></td>
+        <td class="signal-buy">LONG</td>
         <td>\${t.entryPrice ? Number(t.entryPrice).toFixed(4) : '—'}</td>
-        <td>\${t.exitPrice ? Number(t.exitPrice).toFixed(4) : '—'}</td>
+        <td>\${t.exitPrice != null ? Number(t.exitPrice).toFixed(4) : '—'}</td>
         <td>\${t.size ? Number(t.size).toFixed(6) : '—'}</td>
-        <td class="\${pnlClass(t.pnl || 0)}">\${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + Number(t.pnl).toFixed(4) : '—'}</td>
+        <td class="\${t.pnl == null ? '' : pnlClass(t.pnl)}">\${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + Number(t.pnl).toFixed(4) : '—'}</td>
         <td>\${t.reason || '—'}</td>
       </tr>\`).join('') + '</tbody></table>';
 

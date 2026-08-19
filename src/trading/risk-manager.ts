@@ -15,12 +15,14 @@ export function calculatePositionSize(
   const stopLossPrice = entryPrice * (1 - config.stopLossPct / 100);
   const takeProfitPrice = entryPrice * (1 + config.takeProfitPct / 100);
 
-  // Check minimum balance
+  // Check minimum balance (margin available, before leverage)
   if (balance < config.minBalanceEUR) {
     return { size: 0, stopLossPrice, takeProfitPrice, reason: 'INSUFFICIENT_BALANCE' };
   }
 
-  // Max loss per trade = portfolio × risk%
+  const leverage = config.leverage > 0 ? config.leverage : 1;
+
+  // Max loss per trade = margin × risk% (risk is measured against real capital, not leveraged notional)
   const maxLoss = balance * (config.maxRiskPerTradePct / 100);
 
   // Loss per unit = entry - stop loss
@@ -32,8 +34,9 @@ export function calculatePositionSize(
   // Position size based on risk
   let size = maxLoss / lossPerUnit;
 
-  // Cap at what we can afford
-  const maxAffordable = balance / entryPrice;
+  // Cap at the maximum notional we can control with leverage:
+  // buying power = margin (balance) × leverage
+  const maxAffordable = (balance * leverage) / entryPrice;
   if (size > maxAffordable) {
     size = maxAffordable;
   }

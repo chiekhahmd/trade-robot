@@ -14,6 +14,7 @@ const defaultConfig: RiskConfig = {
   maxRiskPerTradePct: 2.0,
   maxDrawdownPct: 10.0,
   minBalanceEUR: 10,
+  leverage: 1,
 };
 
 describe('calculatePositionSize', () => {
@@ -51,6 +52,30 @@ describe('calculatePositionSize', () => {
   it('take profit price is above entry', () => {
     const result = calculatePositionSize(60000, 1000, defaultConfig);
     expect(result.takeProfitPrice).toBeGreaterThan(60000);
+  });
+
+  it('leverage expands the affordability cap by the leverage factor', () => {
+    // With risk% high enough that the affordability cap binds, leverage should
+    // let us control a larger notional: cap = balance * leverage / price.
+    const highRisk: RiskConfig = { ...defaultConfig, maxRiskPerTradePct: 100, leverage: 4 };
+    const result = calculatePositionSize(60000, 1000, highRisk);
+    const leveragedCap = (1000 * 4) / 60000;
+    expect(result.size).toBeCloseTo(leveragedCap, 6);
+  });
+
+  it('4x leverage yields ~4x the size of spot when the cap binds', () => {
+    const spot: RiskConfig = { ...defaultConfig, maxRiskPerTradePct: 100, leverage: 1 };
+    const levered: RiskConfig = { ...defaultConfig, maxRiskPerTradePct: 100, leverage: 4 };
+    const spotSize = calculatePositionSize(60000, 1000, spot).size;
+    const leveredSize = calculatePositionSize(60000, 1000, levered).size;
+    expect(leveredSize).toBeCloseTo(spotSize * 4, 6);
+  });
+
+  it('treats leverage of 0 or missing as spot (1x)', () => {
+    const zeroLev: RiskConfig = { ...defaultConfig, maxRiskPerTradePct: 100, leverage: 0 };
+    const result = calculatePositionSize(60000, 1000, zeroLev);
+    const spotCap = 1000 / 60000;
+    expect(result.size).toBeCloseTo(spotCap, 6);
   });
 });
 

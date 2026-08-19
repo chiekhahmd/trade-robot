@@ -134,13 +134,21 @@ export class KrakenClient {
     pair: string;
     type: 'buy' | 'sell';
     volume: string; // Amount in base currency
+    leverage?: number; // Margin multiplier; omitted/1 = spot order
   }): Promise<string> {
-    const result = await this.privateRequest<{ txid: string[] }>(ENDPOINTS.ADD_ORDER, {
+    const orderParams: Record<string, string> = {
       pair: params.pair,
       type: params.type,
       ordertype: 'market',
       volume: params.volume,
-    });
+    };
+
+    // Only send leverage for margin orders (>1). Kraken treats absence as spot.
+    if (params.leverage && params.leverage > 1) {
+      orderParams.leverage = params.leverage.toString();
+    }
+
+    const result = await this.privateRequest<{ txid: string[] }>(ENDPOINTS.ADD_ORDER, orderParams);
 
     if (!result.txid || result.txid.length === 0) {
       throw new Error('No transaction ID returned from order');

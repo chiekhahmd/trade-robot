@@ -149,15 +149,14 @@ async function openPosition(
     maxRiskPerTradePct: pairConfig.maxRiskPerTradePct,
     maxDrawdownPct: config.maxDrawdownPct,
     minBalanceEUR: config.minBalanceEUR,
+    leverage: pairConfig.leverage,
   };
 
-  // Get balance (with leverage)
-  let balance = 100; // Default for paper
+  // Get available margin (real capital). Leverage is applied inside calculatePositionSize.
+  let balance = 100; // Default margin for paper
   if (config.mode === 'LIVE') {
     const balances = await kraken.getBalance();
-    balance = (balances['ZEUR'] || 0) * pairConfig.leverage;
-  } else {
-    balance = 100 * pairConfig.leverage; // Paper: simulate with leverage
+    balance = balances['ZEUR'] || 0;
   }
 
   const sizing = calculatePositionSize(price, balance, riskConfig);
@@ -168,7 +167,12 @@ async function openPosition(
 
   let orderId = `paper-${Date.now()}`;
   if (config.mode === 'LIVE') {
-    orderId = await kraken.addOrder({ pair, type: 'buy', volume: sizing.size.toFixed(8) });
+    orderId = await kraken.addOrder({
+      pair,
+      type: 'buy',
+      volume: sizing.size.toFixed(8),
+      leverage: pairConfig.leverage,
+    });
   }
 
   const position: Position = {
@@ -193,13 +197,18 @@ async function closePosition(
   currentPrice: number,
   reason: 'SIGNAL' | 'STOP_LOSS' | 'TAKE_PROFIT',
   config: BotConfig,
-  _pairConfig: PairConfig,
+  pairConfig: PairConfig,
   kraken: KrakenClient,
   cycleId: string,
 ): Promise<void> {
   let orderId = `paper-close-${Date.now()}`;
   if (config.mode === 'LIVE') {
-    orderId = await kraken.addOrder({ pair, type: 'sell', volume: position.size.toFixed(8) });
+    orderId = await kraken.addOrder({
+      pair,
+      type: 'sell',
+      volume: position.size.toFixed(8),
+      leverage: pairConfig.leverage,
+    });
   }
 
   const pnl = (currentPrice - position.entryPrice) * position.size;

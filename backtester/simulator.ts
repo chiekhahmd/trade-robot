@@ -23,6 +23,7 @@ export interface SimConfig {
   maxRiskPerTradePct: number;
   emaFast: number;
   emaSlow: number;
+  leverage: number;
 }
 
 export interface SimulationResult {
@@ -37,6 +38,7 @@ const DEFAULT_CONFIG: SimConfig = {
   maxRiskPerTradePct: 2.0,
   emaFast: 9,
   emaSlow: 21,
+  leverage: 1,
 };
 
 const FEE_PCT = 0.26; // Kraken taker fee
@@ -57,6 +59,7 @@ export function simulate(
     maxRiskPerTradePct: cfg.maxRiskPerTradePct,
     maxDrawdownPct: 25,
     minBalanceEUR: 5,
+    leverage: cfg.leverage,
   };
 
   const EMA_FAST = cfg.emaFast;

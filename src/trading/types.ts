@@ -15,6 +15,7 @@ export interface RiskConfig {
   maxRiskPerTradePct: number;
   maxDrawdownPct: number;
   minBalanceEUR: number;
+  leverage: number; // 1 = spot (no leverage), >1 = margin
 }
 
 export interface PositionSizeResult {
