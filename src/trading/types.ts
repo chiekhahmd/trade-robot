@@ -7,6 +7,10 @@ export interface Position {
   takeProfitPrice: number;
   openedAt: number; // Unix timestamp
   orderId: string;
+  // Mixed-strategy fields (optional; present for MIXED positions)
+  regime?: 'TREND' | 'RANGE';   // regime at entry — decides exit logic
+  trailPct?: number;            // trailing-stop distance % (TREND positions)
+  highWater?: number;           // highest price seen since entry (TREND positions)
 }
 
 export interface RiskConfig {

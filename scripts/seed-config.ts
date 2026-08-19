@@ -18,59 +18,35 @@ async function seed() {
       mode: 'PAPER',
       maxDrawdownPct: 15,
       minBalanceEUR: 10,
-      pairs: [
-        {
-          pair: 'SOLEUR',
-          strategy: 'RSI_MEAN_REVERSION',
-          rsiPeriod: 14,
-          rsiOversold: 30,
-          rsiOverbought: 70,
-          stopLossPct: 2.0,
-          takeProfitPct: 4.0,
-          maxRiskPerTradePct: 10.0,
-          leverage: 4,
-          emaFastPeriod: 9,
-          emaSlowPeriod: 21,
-        },
-        {
-          pair: 'XXBTZEUR',
-          strategy: 'RSI_MEAN_REVERSION',
-          rsiPeriod: 14,
-          rsiOversold: 30,
-          rsiOverbought: 70,
-          stopLossPct: 2.0,
-          takeProfitPct: 4.0,
-          maxRiskPerTradePct: 10.0,
-          leverage: 4,
-          emaFastPeriod: 9,
-          emaSlowPeriod: 21,
-        },
-        {
-          pair: 'XETHZEUR',
-          strategy: 'RSI_MEAN_REVERSION',
-          rsiPeriod: 14,
-          rsiOversold: 30,
-          rsiOverbought: 70,
-          stopLossPct: 2.0,
-          takeProfitPct: 4.0,
-          maxRiskPerTradePct: 10.0,
-          leverage: 4,
-          emaFastPeriod: 9,
-          emaSlowPeriod: 21,
-        },
-      ],
+      pairs: ['SOLEUR', 'XXBTZEUR', 'XETHZEUR'].map((pair) => ({
+        pair,
+        strategy: 'MIXED',
+        // Trend-follow structure (backtested best on 15-min)
+        emaFastPeriod: 21,
+        emaSlowPeriod: 55,
+        emaTrendPeriod: 100,
+        trailPct: 4.0,
+        // Range mean-reversion params
+        rsiPeriod: 14,
+        rsiOversold: 35,
+        rsiOverbought: 70,
+        stopLossPct: 2.0,
+        takeProfitPct: 4.0,
+        maxRiskPerTradePct: 10.0,
+        leverage: 4,
+      })),
     },
   }));
 
-  console.log('✅ Config seeded (PAPER mode, 15-min RSI(14) strategy)');
+  console.log('✅ Config seeded (PAPER mode, 15-min MIXED strategy, 4x leverage)');
   console.log('');
-  console.log('  Pair 1: SOL/EUR — RSI(14), oversold=30, overbought=70, SL=2%, TP=4%, 4x leverage');
-  console.log('  Pair 2: BTC/EUR — RSI(14), oversold=30, overbought=70, SL=2%, TP=4%, 4x leverage');
-  console.log('  Pair 3: ETH/EUR — RSI(14), oversold=30, overbought=70, SL=2%, TP=4%, 4x leverage');
+  console.log('  Pairs: SOL/EUR, BTC/EUR, ETH/EUR');
+  console.log('  Strategy: MIXED (regime-adaptive)');
+  console.log('    - TREND regime → trend-follow (EMA21/55 + EMA100 filter), 4% trailing stop');
+  console.log('    - RANGE regime → mean-revert RSI(14) 35/70, SL 2% / TP 4%');
+  console.log('  Leverage: 4x');
   console.log('');
-  console.log('  EUR/USD dropped (negative P&L on all strategies)');
-  console.log('');
-  console.log('  To switch to LIVE mode, update the DynamoDB item:');
+  console.log('  Currently PAPER mode. To go LIVE, update DynamoDB item:');
   console.log('  PK=CONFIG, SK=PARAMS → set mode="LIVE"');
 }
 

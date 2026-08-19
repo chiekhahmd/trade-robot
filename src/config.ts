@@ -13,14 +13,17 @@ export interface BotConfig {
 
 export interface PairConfig {
   pair: string;           // Kraken pair name (e.g., 'SOLEUR', 'XXBTZEUR')
-  strategy: 'EMA_CROSSOVER' | 'RSI_MEAN_REVERSION';
+  strategy: 'EMA_CROSSOVER' | 'RSI_MEAN_REVERSION' | 'MIXED';
   // EMA params (used when strategy = EMA_CROSSOVER)
   emaFastPeriod: number;
   emaSlowPeriod: number;
-  // RSI params (used when strategy = RSI_MEAN_REVERSION)
+  // RSI params (used when strategy = RSI_MEAN_REVERSION / MIXED range mode)
   rsiPeriod: number;
   rsiOversold: number;
   rsiOverbought: number;
+  // MIXED params (regime-adaptive trend-follow + mean-revert)
+  emaTrendPeriod: number;   // long trend filter EMA (regime detection)
+  trailPct: number;         // trailing-stop distance % (TREND positions)
   // Risk params (per pair)
   stopLossPct: number;
   takeProfitPct: number;
@@ -30,11 +33,15 @@ export interface PairConfig {
 
 const DEFAULT_PAIR_CONFIG: PairConfig = {
   pair: 'SOLEUR',
-  strategy: 'RSI_MEAN_REVERSION',
-  emaFastPeriod: 9,
-  emaSlowPeriod: 21,
+  strategy: 'MIXED',
+  // Trend-follow structure (matches backtested 15m mixed strategy)
+  emaFastPeriod: 21,
+  emaSlowPeriod: 55,
+  emaTrendPeriod: 100,
+  trailPct: 4.0,
+  // Range mean-reversion params
   rsiPeriod: 14,
-  rsiOversold: 30,
+  rsiOversold: 35,
   rsiOverbought: 70,
   stopLossPct: 2.0,
   takeProfitPct: 4.0,

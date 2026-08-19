@@ -10,6 +10,7 @@ import { computeEMA } from './strategy/ema';
 import { detectCrossover } from './strategy/signals';
 import { computeRSI } from './strategy/rsi';
 import { detectRSISignal } from './strategy/rsi-signals';
+import { decideMixed, MixedConfig } from './strategy/mixed';
 import { calculatePositionSize, checkStopLoss, checkTakeProfit } from './trading/risk-manager';
 import { loadConfig, BotConfig, PairConfig } from './config';
 import { withRetry } from './utils/retry';
@@ -77,9 +78,11 @@ async function processPair(
   // Fetch candles
   const candles = await withRetry(() => kraken.getOHLC(pair, 15), { maxRetries: 3, baseDelay: 1000, multiplier: 2 });
 
-  const minCandles = strategy === 'EMA_CROSSOVER'
-    ? pairConfig.emaSlowPeriod + 2
-    : pairConfig.rsiPeriod + 2;
+  const minCandles = strategy === 'MIXED'
+    ? pairConfig.emaTrendPeriod + 8
+    : strategy === 'EMA_CROSSOVER'
+      ? pairConfig.emaSlowPeriod + 2
+      : pairConfig.rsiPeriod + 2;
 
   if (candles.length < minCandles) {
     console.log(`[${cycleId}] ${pair}: Not enough candles (${candles.length})`);
@@ -90,8 +93,16 @@ async function processPair(
   const currentPrice = candles[candles.length - 1].close;
   const timestamp = candles[candles.length - 1].timestamp;
 
-  // Check existing position for SL/TP
   const position = await getPosition(pair);
+
+  if (strategy === 'MIXED') {
+    await processMixedPair(pair, pairConfig, config, kraken, cycleId, closes, currentPrice, position);
+    return;
+  }
+
+  // ─── Legacy single-mode strategies (EMA_CROSSOVER / RSI_MEAN_REVERSION) ──────
+
+  // Check existing position for SL/TP
   if (position) {
     if (checkStopLoss(position, currentPrice)) {
       console.log(`[${cycleId}] ${pair}: STOP LOSS at ${currentPrice}`);
@@ -135,6 +146,82 @@ async function processPair(
   }
 }
 
+/**
+ * MIXED strategy: regime-adaptive.
+ *  - TREND regime: hold long, exit via trailing stop (winners run).
+ *  - RANGE regime: enter on RSI bounce, exit on overbought / fixed SL / TP.
+ */
+async function processMixedPair(
+  pair: string,
+  pairConfig: PairConfig,
+  config: BotConfig,
+  kraken: KrakenClient,
+  cycleId: string,
+  closes: number[],
+  currentPrice: number,
+  position: Position | null,
+): Promise<void> {
+  const cfg: MixedConfig = {
+    emaFast: pairConfig.emaFastPeriod,
+    emaSlow: pairConfig.emaSlowPeriod,
+    emaTrend: pairConfig.emaTrendPeriod,
+    rsiPeriod: pairConfig.rsiPeriod,
+    rsiOversold: pairConfig.rsiOversold,
+    rsiOverbought: pairConfig.rsiOverbought,
+    trendSlopeLookback: 5,
+  };
+
+  const decision = decideMixed(closes, { inPosition: !!position }, cfg);
+  console.log(
+    `[${cycleId}] ${pair} [MIXED/${decision.regime}]: action=${decision.action} ` +
+    `reason=${decision.reason} price=${currentPrice} rsi=${decision.rsi.toFixed(1)}`,
+  );
+  await logSignal(cycleId, pair, `${decision.action}:${decision.regime}`, decision.emaFast, decision.rsi, currentPrice, 'MIXED');
+
+  if (position) {
+    // Exit checks depend on the regime the position was opened in.
+    if (position.regime === 'TREND') {
+      // Trailing stop: raise the stop as price makes new highs, exit if breached.
+      const highWater = Math.max(position.highWater ?? position.entryPrice, currentPrice);
+      const trailPct = position.trailPct ?? pairConfig.trailPct;
+      const trailStop = highWater * (1 - trailPct / 100);
+
+      if (currentPrice <= trailStop) {
+        console.log(`[${cycleId}] ${pair}: TRAILING STOP at ${currentPrice} (stop=${trailStop.toFixed(4)})`);
+        await closePosition(pair, position, currentPrice, 'STOP_LOSS', config, pairConfig, kraken, cycleId);
+        return;
+      }
+      // Update the trailing high-water mark if it moved up.
+      if (highWater > (position.highWater ?? 0)) {
+        await savePosition(pair, { ...position, highWater, stopLossPrice: trailStop });
+      }
+      return;
+    }
+
+    // RANGE position: fixed SL / TP, then overbought signal exit.
+    if (checkStopLoss(position, currentPrice)) {
+      console.log(`[${cycleId}] ${pair}: STOP LOSS at ${currentPrice}`);
+      await closePosition(pair, position, currentPrice, 'STOP_LOSS', config, pairConfig, kraken, cycleId);
+      return;
+    }
+    if (checkTakeProfit(position, currentPrice)) {
+      console.log(`[${cycleId}] ${pair}: TAKE PROFIT at ${currentPrice}`);
+      await closePosition(pair, position, currentPrice, 'TAKE_PROFIT', config, pairConfig, kraken, cycleId);
+      return;
+    }
+    if (decision.action === 'EXIT') {
+      console.log(`[${cycleId}] ${pair}: SIGNAL EXIT (overbought) at ${currentPrice}`);
+      await closePosition(pair, position, currentPrice, 'SIGNAL', config, pairConfig, kraken, cycleId);
+    }
+    return;
+  }
+
+  // No position — enter if the strategy says so.
+  if (decision.action === 'ENTER') {
+    await openPosition(pair, currentPrice, config, pairConfig, kraken, cycleId, decision.regime);
+  }
+}
+
 async function openPosition(
   pair: string,
   price: number,
@@ -142,9 +229,12 @@ async function openPosition(
   pairConfig: PairConfig,
   kraken: KrakenClient,
   cycleId: string,
+  regime?: 'TREND' | 'RANGE',
 ): Promise<void> {
+  // In TREND mode the stop distance is the trailing %, so risk sizing must use it.
+  const stopPctForSizing = regime === 'TREND' ? pairConfig.trailPct : pairConfig.stopLossPct;
   const riskConfig: RiskConfig = {
-    stopLossPct: pairConfig.stopLossPct,
+    stopLossPct: stopPctForSizing,
     takeProfitPct: pairConfig.takeProfitPct,
     maxRiskPerTradePct: pairConfig.maxRiskPerTradePct,
     maxDrawdownPct: config.maxDrawdownPct,
@@ -186,9 +276,23 @@ async function openPosition(
     orderId,
   };
 
+  // For MIXED strategy, tag the position with its regime so exits use the
+  // right logic (trailing stop for TREND, fixed SL/TP for RANGE).
+  if (regime) {
+    position.regime = regime;
+    if (regime === 'TREND') {
+      position.trailPct = pairConfig.trailPct;
+      position.highWater = price;
+      // In trend mode the "stop" is the trailing stop; take-profit is open-ended.
+      position.stopLossPrice = price * (1 - pairConfig.trailPct / 100);
+      position.takeProfitPrice = Number.MAX_SAFE_INTEGER;
+    }
+  }
+
   await savePosition(pair, position);
   await logTrade(cycleId, pair, 'buy', sizing.size, price, 0, 0, 'SIGNAL', orderId, config.mode);
-  console.log(`[${cycleId}] ${pair}: OPENED — size=${sizing.size.toFixed(6)} SL=${sizing.stopLossPrice.toFixed(4)} TP=${sizing.takeProfitPrice.toFixed(4)}`);
+  const regimeTag = regime ? ` regime=${regime}` : '';
+  console.log(`[${cycleId}] ${pair}: OPENED${regimeTag} — size=${sizing.size.toFixed(6)} SL=${position.stopLossPrice.toFixed(4)} TP=${position.takeProfitPrice === Number.MAX_SAFE_INTEGER ? 'trailing' : position.takeProfitPrice.toFixed(4)}`);
 }
 
 async function closePosition(
