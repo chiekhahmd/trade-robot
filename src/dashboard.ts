@@ -310,16 +310,26 @@ async function loadDashboard() {
     if (positions.length === 0) {
       posDiv.innerHTML = '<div class="positions-empty">No open positions</div>';
     } else {
-      posDiv.innerHTML = '<table><thead><tr><th>Pair</th><th>Side</th><th>Entry</th><th>Size</th><th>SL</th><th>TP</th><th>Opened</th></tr></thead><tbody>' +
-        positions.map(p => \`<tr>
+      const MAX_SAFE = 9007199254740991;
+      posDiv.innerHTML = '<table><thead><tr><th>Pair</th><th>Regime</th><th>Side</th><th>Entry</th><th>Size</th><th>Stop</th><th>Target</th><th>Opened</th></tr></thead><tbody>' +
+        positions.map(p => {
+          const isTrend = p.regime === 'TREND';
+          const tp = Number(p.takeProfitPrice);
+          const tpCell = (!p.takeProfitPrice || tp >= MAX_SAFE || isTrend)
+            ? '<span class="signal-hold">Trailing</span>'
+            : tp.toFixed(4);
+          const stopLabel = isTrend ? ' (trail)' : '';
+          return \`<tr>
           <td><span class="pair-tag">\${p.pair || (p.PK || '').replace('POSITION#','')}</span></td>
+          <td>\${p.regime || '—'}</td>
           <td>\${p.side || '—'}</td>
           <td>\${p.entryPrice ? Number(p.entryPrice).toFixed(4) : '—'}</td>
           <td>\${p.size ? Number(p.size).toFixed(6) : '—'}</td>
-          <td>\${p.stopLossPrice ? Number(p.stopLossPrice).toFixed(4) : '—'}</td>
-          <td>\${p.takeProfitPrice ? Number(p.takeProfitPrice).toFixed(4) : '—'}</td>
+          <td>\${p.stopLossPrice ? Number(p.stopLossPrice).toFixed(4) + stopLabel : '—'}</td>
+          <td>\${tpCell}</td>
           <td>\${fmt(p.openedAt)}</td>
-        </tr>\`).join('') + '</tbody></table>';
+        </tr>\`;
+        }).join('') + '</tbody></table>';
     }
 
     // Signals — last 20 per pair
