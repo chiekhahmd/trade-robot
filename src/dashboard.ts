@@ -27,6 +27,9 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
     if (path === '/api/positions') {
       return jsonResponse(await getPositions());
     }
+    if (path === '/api/prices') {
+      return jsonResponse(await getLivePrices());
+    }
     // Default: serve HTML dashboard
     return htmlResponse(buildDashboardHTML());
   } catch (error) {
@@ -160,6 +163,29 @@ async function getPositions(): Promise<unknown[]> {
   return result.Items || [];
 }
 
+/**
+ * Fetch live prices from Kraken's public Ticker API for all open positions.
+ */
+async function getLivePrices(): Promise<Record<string, number>> {
+  const positions = await getPositions() as Record<string, any>[];
+  const pairs = [...new Set(positions.map((p) => p.pair).filter(Boolean))];
+  if (pairs.length === 0) return {};
+
+  try {
+    const url = `https://api.kraken.com/0/public/Ticker?pair=${pairs.join(',')}`;
+    const res = await fetch(url);
+    const data = (await res.json()) as any;
+    if (data.error?.length) return {};
+    const prices: Record<string, number> = {};
+    for (const [key, val] of Object.entries(data.result || {})) {
+      prices[key] = parseFloat((val as any).c?.[0] || '0');
+    }
+    return prices;
+  } catch {
+    return {};
+  }
+}
+
 // ─── Response helpers ────────────────────────────────────────────────────────
 
 function jsonResponse(body: unknown, statusCode = 200): APIGatewayProxyResultV2 {
@@ -275,11 +301,12 @@ async function fetchJSON(url) {
 
 async function loadDashboard() {
   try {
-    const [config, signals, roundtrips, positions] = await Promise.all([
+    const [config, signals, roundtrips, positions, prices] = await Promise.all([
       fetchJSON('/api/config'),
       fetchJSON('/api/signals'),
       fetchJSON('/api/roundtrips'),
       fetchJSON('/api/positions'),
+      fetchJSON('/api/prices'),
     ]);
 
     // Status cards
@@ -311,22 +338,39 @@ async function loadDashboard() {
       posDiv.innerHTML = '<div class="positions-empty">No open positions</div>';
     } else {
       const MAX_SAFE = 9007199254740991;
-      posDiv.innerHTML = '<table><thead><tr><th>Pair</th><th>Regime</th><th>Side</th><th>Entry</th><th>Size</th><th>Stop</th><th>Target</th><th>Opened</th></tr></thead><tbody>' +
+      posDiv.innerHTML = '<table><thead><tr><th>Pair</th><th>Regime</th><th>Entry</th><th>Current</th><th>Size</th><th>Stop (live)</th><th>Target</th><th>Unrealized P&L</th><th>Opened</th></tr></thead><tbody>' +
         positions.map(p => {
           const isTrend = p.regime === 'TREND';
           const tp = Number(p.takeProfitPrice);
           const tpCell = (!p.takeProfitPrice || tp >= MAX_SAFE || isTrend)
             ? '<span class="signal-hold">Trailing</span>'
             : tp.toFixed(4);
+          const entryP = Number(p.entryPrice || 0);
+          const size = Number(p.size || 0);
+          const pair = p.pair || (p.PK || '').replace('POSITION#', '');
+          // Look up live price (Kraken may return a slightly different key)
+          const livePrice = prices[pair] || Object.values(prices).find((v, i) => Object.keys(prices)[i]?.includes(pair)) || 0;
+          const currentP = Number(livePrice) || 0;
+
+          // For TREND positions, compute the live trailing stop
+          const highWater = Math.max(Number(p.highWater || 0), currentP);
+          const trailPct = Number(p.trailPct || 4);
+          const liveStop = isTrend ? highWater * (1 - trailPct / 100) : Number(p.stopLossPrice || 0);
           const stopLabel = isTrend ? ' (trail)' : '';
+
+          const unrealizedPnl = currentP > 0 ? (currentP - entryP) * size : 0;
+          const pnlStr = currentP > 0 ? (unrealizedPnl >= 0 ? '+' : '') + unrealizedPnl.toFixed(4) : '—';
+          const pnlCls = currentP > 0 ? pnlClass(unrealizedPnl) : '';
+
           return \`<tr>
-          <td><span class="pair-tag">\${p.pair || (p.PK || '').replace('POSITION#','')}</span></td>
+          <td><span class="pair-tag">\${pair}</span></td>
           <td>\${p.regime || '—'}</td>
-          <td>\${p.side || '—'}</td>
-          <td>\${p.entryPrice ? Number(p.entryPrice).toFixed(4) : '—'}</td>
-          <td>\${p.size ? Number(p.size).toFixed(6) : '—'}</td>
-          <td>\${p.stopLossPrice ? Number(p.stopLossPrice).toFixed(4) + stopLabel : '—'}</td>
+          <td>\${entryP ? entryP.toFixed(4) : '—'}</td>
+          <td>\${currentP ? currentP.toFixed(4) : '—'}</td>
+          <td>\${size ? size.toFixed(6) : '—'}</td>
+          <td>\${liveStop ? liveStop.toFixed(4) + stopLabel : '—'}</td>
           <td>\${tpCell}</td>
+          <td class="\${pnlCls}">\${pnlStr}</td>
           <td>\${fmt(p.openedAt)}</td>
         </tr>\`;
         }).join('') + '</tbody></table>';

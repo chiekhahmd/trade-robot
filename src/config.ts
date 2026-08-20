@@ -32,7 +32,7 @@ export interface PairConfig {
 }
 
 const DEFAULT_PAIR_CONFIG: PairConfig = {
-  pair: 'SOLEUR',
+  pair: 'SOLUSD',
   strategy: 'MIXED',
   // Trend-follow structure (matches backtested 15m mixed strategy)
   emaFastPeriod: 21,
@@ -53,9 +53,9 @@ const DEFAULTS: BotConfig = {
   enabled: true,
   mode: 'PAPER',
   pairs: [
-    { ...DEFAULT_PAIR_CONFIG, pair: 'SOLEUR' },
-    { ...DEFAULT_PAIR_CONFIG, pair: 'XXBTZEUR' },
-    { ...DEFAULT_PAIR_CONFIG, pair: 'XETHZEUR' },
+    { ...DEFAULT_PAIR_CONFIG, pair: 'SOLUSD' },
+    { ...DEFAULT_PAIR_CONFIG, pair: 'XXBTZUSD' },
+    { ...DEFAULT_PAIR_CONFIG, pair: 'XETHZUSD' },
   ],
   maxDrawdownPct: 15.0,
   minBalanceEUR: 10,

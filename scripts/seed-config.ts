@@ -18,7 +18,7 @@ async function seed() {
       mode: 'PAPER',
       maxDrawdownPct: 15,
       minBalanceEUR: 10,
-      pairs: ['SOLEUR', 'XXBTZEUR', 'XETHZEUR'].map((pair) => ({
+      pairs: ['SOLUSD', 'XXBTZUSD', 'XETHZUSD'].map((pair) => ({
         pair,
         strategy: 'MIXED',
         // Trend-follow structure (backtested best on 15-min)
@@ -38,9 +38,9 @@ async function seed() {
     },
   }));
 
-  console.log('✅ Config seeded (PAPER mode, 15-min MIXED strategy, 4x leverage)');
+  console.log('✅ Config seeded (PAPER mode, 15-min MIXED strategy, 4x leverage, USD pairs)');
   console.log('');
-  console.log('  Pairs: SOL/EUR, BTC/EUR, ETH/EUR');
+  console.log('  Pairs: SOL/USD, BTC/USD, ETH/USD');
   console.log('  Strategy: MIXED (regime-adaptive)');
   console.log('    - TREND regime → trend-follow (EMA21/55 + EMA100 filter), 4% trailing stop');
   console.log('    - RANGE regime → mean-revert RSI(14) 35/70, SL 2% / TP 4%');

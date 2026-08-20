@@ -246,7 +246,9 @@ async function openPosition(
   let balance = 100; // Default margin for paper
   if (config.mode === 'LIVE') {
     const balances = await kraken.getBalance();
-    balance = balances['ZEUR'] || 0;
+    // Use USD balance for USD pairs, EUR for EUR pairs
+    const isUSD = pair.endsWith('USD') || pair.endsWith('ZUSD');
+    balance = isUSD ? (balances['ZUSD'] || balances['USD'] || 0) : (balances['ZEUR'] || 0);
   }
 
   const sizing = calculatePositionSize(price, balance, riskConfig);
